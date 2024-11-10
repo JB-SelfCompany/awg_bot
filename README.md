@@ -80,6 +80,11 @@ python3.11 bot_awg.py             # Или bot_wg.py, зависит от тог
 
 ## Заметки
 
+Вы можете запускать бота как службу, на вашем сервере. Для этого необходимо скопировать файл awg_bot.service в директорию /etc/systemd/system/, и скорректировать параметры внутри с помощью nano:
+```bash
+nano awg_bot.service
+```
+
 Для корректной работы требуется запуск бота от имени пользователя с правами sudo, если [WireGuard](https://www.wireguard.com)/[AmneziaWG](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module) настроен с повышенными привилегиями.
 [WireGuard](https://www.wireguard.com)/[AmneziaWG](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module) должен быть настроен и запущен на сервере до использования бота.
 
