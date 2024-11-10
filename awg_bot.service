@@ -1,0 +1,17 @@
+[Unit]
+Description=Bots Service
+After=network.target
+
+[Service]
+Type=simple
+#Укажите пользователя, под которым будет запускаться сервис
+User=your_user
+#Укажите рабочую директорию, в которой расположен бот, может быть wg
+WorkingDirectory=/home/your_user/awg 
+#Может использоваться или bot_awg.py или bot_wg.py
+ExecStart=/bin/bash -c 'source /home/your_user/env/bin/activate && /home/your_user/env/bin/python3.11 bot_awg.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
