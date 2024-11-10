@@ -36,13 +36,13 @@ def get_config(path='setting.ini'):
         out[key] = config['setting'][key]
     return out
 
-def root_add(id_user, ygg=False):
+def root_add(id_user, ipv6=False):
     setting = get_config()
     endpoint = setting['endpoint']
     wg_config_file = setting['wg_config_file']
 
-    if ygg:
-        cmd = ["./newclient.sh", id_user, endpoint, wg_config_file, 'ygg']
+    if ipv6:
+        cmd = ["./newclient.sh", id_user, endpoint, wg_config_file, 'ipv6']
     else:
         cmd = ["./newclient.sh", id_user, endpoint, wg_config_file]
 
@@ -149,3 +149,7 @@ def remove_user_expiration(username: str):
 def get_users_with_expiration():
     expirations = load_expirations()
     return [(user, ts.isoformat() if ts else None) for user, ts in expirations.items()]
+
+def get_user_expiration(username: str):
+    expirations = load_expirations()
+    return expirations.get(username, None)

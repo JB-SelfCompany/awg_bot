@@ -37,22 +37,32 @@ main_menu_markup = InlineKeyboardMarkup(row_width=1).add(
 
 user_main_messages = {}
 
-def server_supports_ygg():
+def get_ipv6_subnet():
     try:
         with open(WG_CONFIG_FILE, 'r') as f:
+            in_interface = False
             for line in f:
                 line = line.strip()
-                if line.startswith('Address'):
-                    addresses = line.split('=', 1)[1].strip().split(',')
-                    for addr in addresses:
-                        addr = addr.strip()
-                        if addr.startswith('300:'):
-                            return True
-                    return False
-        return False
+                if line.startswith('[Interface]'):
+                    in_interface = True
+                    continue
+                if in_interface:
+                    if line.startswith('Address'):
+                        addresses = line.split('=')[1].strip().split(',')
+                        for addr in addresses:
+                            addr = addr.strip()
+                            if ':' in addr:
+                                parts = addr.split('/')
+                                if len(parts) == 2:
+                                    ip, mask = parts
+                                    prefix = re.sub(r'::[0-9a-fA-F]+$', '::', ip)
+                                    return f"{prefix}/64"
+                        return None
+                    elif line.startswith('['):
+                        break
     except Exception as e:
-        logger.error(f"Ошибка при чтении файла конфигурации WireGuard: {e}")
-        return False
+        logger.error(f"Ошибка при чтении файла конфигурации AmneziaWG: {e}")
+        return None
 
 def is_user_blocked(username):
     try:
@@ -176,7 +186,7 @@ async def restart_wireguard():
         os.unlink(temp_config_path)
         return True
     except Exception as e:
-        logger.error(f"Ошибка при перезапуске WireGuard: {e}")
+        logger.error(f"Ошибка при перезапуске AmneziaWG: {e}")
         return False
 
 async def delete_message_after_delay(chat_id: int, message_id: int, delay: int):
@@ -215,12 +225,13 @@ async def handle_messages(message: types.Message):
         user_main_messages['client_name'] = user_name
         user_main_messages['waiting_for_user_name'] = False
 
-        supports_ygg = server_supports_ygg()
+        ipv6_subnet = get_ipv6_subnet()
+        logger.info(f"IPv6 подсеть: {ipv6_subnet}")
 
-        if supports_ygg:
+        if ipv6_subnet:
             connect_buttons = [
-                InlineKeyboardButton("Подключить с Ygg", callback_data=f'connect_{user_name}_yes'),
-                InlineKeyboardButton("Подключить без Ygg", callback_data=f'connect_{user_name}_no'),
+                InlineKeyboardButton("С IPv6", callback_data=f'connect_{user_name}_ipv6'),
+                InlineKeyboardButton("Без IPv6", callback_data=f'connect_{user_name}_noipv6'),
                 InlineKeyboardButton("Домой", callback_data="home")
             ]
             connect_markup = InlineKeyboardMarkup(row_width=1).add(*connect_buttons)
@@ -239,12 +250,14 @@ async def handle_messages(message: types.Message):
                 logger.error("Главное сообщение не найдено для администратора.")
                 await message.answer("Ошибка: главное сообщение не найдено.")
         else:
+            user_main_messages['ipv6'] = 'noipv6'
+
             duration_buttons = [
-                InlineKeyboardButton("1 час", callback_data=f"duration_1h_{user_name}_no"),
-                InlineKeyboardButton("1 день", callback_data=f"duration_1d_{user_name}_no"),
-                InlineKeyboardButton("1 неделя", callback_data=f"duration_1w_{user_name}_no"),
-                InlineKeyboardButton("1 месяц", callback_data=f"duration_1m_{user_name}_no"),
-                InlineKeyboardButton("Без ограничений", callback_data=f"duration_unlimited_{user_name}_no"),
+                InlineKeyboardButton("1 час", callback_data=f"duration_1h_{user_name}_noipv6"),
+                InlineKeyboardButton("1 день", callback_data=f"duration_1d_{user_name}_noipv6"),
+                InlineKeyboardButton("1 неделя", callback_data=f"duration_1w_{user_name}_noipv6"),
+                InlineKeyboardButton("1 месяц", callback_data=f"duration_1m_{user_name}_noipv6"),
+                InlineKeyboardButton("Без ограничений", callback_data=f"duration_unlimited_{user_name}_noipv6"),
                 InlineKeyboardButton("Домой", callback_data="home")
             ]
             duration_markup = InlineKeyboardMarkup(row_width=1).add(*duration_buttons)
@@ -255,11 +268,11 @@ async def handle_messages(message: types.Message):
                 await bot.edit_message_text(
                     chat_id=main_chat_id,
                     message_id=main_message_id,
-                    text="Выберите время действия конфигурации:",
+                    text=f"Выберите время действия конфигурации для пользователя **{user_name}**:",
+                    parse_mode="Markdown",
                     reply_markup=duration_markup
                 )
             else:
-                logger.error("Главное сообщение не найдено для администратора.")
                 await message.answer("Ошибка: главное сообщение не найдено.")
     else:
         await message.reply("Неизвестная команда или действие.")
@@ -293,20 +306,20 @@ async def connect_user(callback: types.CallbackQuery):
         return
 
     try:
-        _, client_name, ygg = callback.data.split('_')
+        _, client_name, ipv6_flag = callback.data.split('_', 2)
     except ValueError:
         await callback.answer("Неверный формат команды.", show_alert=True)
         return
 
     user_main_messages['client_name'] = client_name
-    user_main_messages['ygg'] = ygg
+    user_main_messages['ipv6'] = ipv6_flag
 
     duration_buttons = [
-        InlineKeyboardButton("1 час", callback_data=f"duration_1h_{client_name}_{ygg}"),
-        InlineKeyboardButton("1 день", callback_data=f"duration_1d_{client_name}_{ygg}"),
-        InlineKeyboardButton("1 неделя", callback_data=f"duration_1w_{client_name}_{ygg}"),
-        InlineKeyboardButton("1 месяц", callback_data=f"duration_1m_{client_name}_{ygg}"),
-        InlineKeyboardButton("Без ограничений", callback_data=f"duration_unlimited_{client_name}_{ygg}"),
+        InlineKeyboardButton("1 час", callback_data=f"duration_1h_{client_name}_{ipv6_flag}"),
+        InlineKeyboardButton("1 день", callback_data=f"duration_1d_{client_name}_{ipv6_flag}"),
+        InlineKeyboardButton("1 неделя", callback_data=f"duration_1w_{client_name}_{ipv6_flag}"),
+        InlineKeyboardButton("1 месяц", callback_data=f"duration_1m_{client_name}_{ipv6_flag}"),
+        InlineKeyboardButton("Без ограничений", callback_data=f"duration_unlimited_{client_name}_{ipv6_flag}"),
         InlineKeyboardButton("Домой", callback_data="home")
     ]
     duration_markup = InlineKeyboardMarkup(row_width=1).add(*duration_buttons)
@@ -324,6 +337,29 @@ async def connect_user(callback: types.CallbackQuery):
 
     await callback.answer()
 
+def parse_relative_time(time_str):
+    now = datetime.now(pytz.UTC)
+    delta = timedelta()
+
+    parts = time_str.strip().split(',')
+    for part in parts:
+        part = part.strip()
+        match = re.match(r'(\d+)\s+(day|hour|minute|second)s?', part)
+        if match:
+            value = int(match.group(1))
+            unit = match.group(2)
+            if unit == 'day':
+                delta += timedelta(days=value)
+            elif unit == 'hour':
+                delta += timedelta(hours=value)
+            elif unit == 'minute':
+                delta += timedelta(minutes=value)
+            elif unit == 'second':
+                delta += timedelta(seconds=value)
+
+    last_handshake_time = now - delta
+    return last_handshake_time
+
 @dp.callback_query_handler(lambda c: c.data.startswith('duration_'))
 async def set_config_duration(callback: types.CallbackQuery):
     if callback.from_user.id != admin:
@@ -333,7 +369,7 @@ async def set_config_duration(callback: types.CallbackQuery):
     parts = callback.data.split('_')
     duration_choice = parts[1]
     client_name = parts[2]
-    ygg = parts[3] if len(parts) > 3 else 'no'
+    ipv6_flag = parts[3] if len(parts) > 3 else 'noipv6'
 
     main_chat_id, main_message_id = user_main_messages.get(admin, (None, None))
     if not main_chat_id or not main_message_id:
@@ -355,10 +391,10 @@ async def set_config_duration(callback: types.CallbackQuery):
         asyncio.create_task(delete_message_after_delay(admin, main_message_id, delay=2))
         return
 
-    if ygg == 'yes':
-        success = db.root_add(client_name, ygg=True)
+    if ipv6_flag == 'ipv6':
+        success = db.root_add(client_name, ipv6=True)
     else:
-        success = db.root_add(client_name)
+        success = db.root_add(client_name, ipv6=False)
 
     if success:
         try:
@@ -416,33 +452,7 @@ async def set_config_duration(callback: types.CallbackQuery):
 
     await callback.answer()
 
-def parse_relative_time(time_str):
-    """
-    Преобразует строку вида "34 minutes, 22 seconds ago" в объект datetime
-    """
-    now = datetime.now(pytz.UTC)
-    delta = timedelta()
-
-    parts = time_str.strip().split(',')
-    for part in parts:
-        part = part.strip()
-        match = re.match(r'(\d+)\s+(day|hour|minute|second)s?', part)
-        if match:
-            value = int(match.group(1))
-            unit = match.group(2)
-            if unit == 'day':
-                delta += timedelta(days=value)
-            elif unit == 'hour':
-                delta += timedelta(hours=value)
-            elif unit == 'minute':
-                delta += timedelta(minutes=value)
-            elif unit == 'second':
-                delta += timedelta(seconds=value)
-
-    last_handshake_time = now - delta
-    return last_handshake_time
-
-@dp.callback_query_handler(lambda c: c.data == "list_users")
+@dp.callback_query_handler(lambda c: c.data.startswith('list_users'))
 async def list_users_callback(callback_query: types.CallbackQuery):
     if callback_query.from_user.id != admin:
         await callback_query.answer("У вас нет прав для выполнения этого действия.", show_alert=True)
@@ -503,7 +513,7 @@ async def list_users_callback(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('client_'))
+@dp.callback_query_handler(lambda c: c.data.startswith('client_'))
 async def client_selected_callback(callback_query: types.CallbackQuery):
     _, username = callback_query.data.split('client_', 1)
     username = username.strip()
@@ -515,6 +525,7 @@ async def client_selected_callback(callback_query: types.CallbackQuery):
         return
 
     is_blocked = is_user_blocked(username)
+    expiration_time = db.get_user_expiration(username)
 
     text = f"*Информация о пользователе {username}:*\n"
     if client_info[1]:
@@ -549,6 +560,18 @@ async def client_selected_callback(callback_query: types.CallbackQuery):
         text += f'  Endpoint: {endpoint}\n'
     else:
         text += '  Нет активных подключений.\n'
+
+    if expiration_time:
+        now = datetime.now(pytz.UTC)
+        expiration_dt = expiration_time
+        if expiration_dt.tzinfo is None:
+            expiration_dt = expiration_dt.replace(tzinfo=pytz.UTC)
+        remaining = expiration_dt - now
+        if remaining.total_seconds() > 0:
+            days, seconds = remaining.days, remaining.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            text += f'  Оставшееся время: {days}д {hours}ч {minutes}м\n'
 
     if is_blocked:
         text += '\n*Статус:* 🔴 Заблокирован'
@@ -589,7 +612,7 @@ async def client_selected_callback(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('ip_info_'))
+@dp.callback_query_handler(lambda c: c.data.startswith('ip_info_'))
 async def ip_info_callback(callback_query: types.CallbackQuery):
     _, username = callback_query.data.split('ip_info_', 1)
     username = username.strip()
@@ -651,7 +674,7 @@ async def ip_info_callback(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('delete_user_'))
+@dp.callback_query_handler(lambda c: c.data.startswith('delete_user_'))
 async def client_delete_callback(callback_query: types.CallbackQuery):
     username = callback_query.data.split('delete_user_')[1]
 
@@ -662,7 +685,6 @@ async def client_delete_callback(callback_query: types.CallbackQuery):
             scheduler.remove_job(job_id=username)
         except:
             pass
-
         confirmation_text = f"Пользователь **{username}** успешно удален."
     else:
         confirmation_text = f"Не удалось удалить пользователя **{username}**."
@@ -682,7 +704,7 @@ async def client_delete_callback(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-@dp.callback_query_handler(lambda c: c.data and (c.data.startswith('block_user_') or c.data.startswith('unblock_user_')))
+@dp.callback_query_handler(lambda c: c.data.startswith('block_user_') or c.data.startswith('unblock_user_'))
 async def client_block_callback(callback_query: types.CallbackQuery):
     data = callback_query.data
     if data.startswith('block_user_'):
@@ -725,6 +747,7 @@ async def return_home(callback_query: types.CallbackQuery):
     if main_chat_id and main_message_id:
         user_main_messages.pop('waiting_for_user_name', None)
         user_main_messages.pop('client_name', None)
+        user_main_messages.pop('ipv6', None)
         try:
             await bot.edit_message_text(
                 chat_id=main_chat_id,
@@ -786,7 +809,7 @@ async def list_users_for_config(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('send_config_'))
+@dp.callback_query_handler(lambda c: c.data.startswith('send_config_'))
 async def send_user_config(callback_query: types.CallbackQuery):
     if callback_query.from_user.id != admin:
         await callback_query.answer("У вас нет прав для выполнения этого действия.", show_alert=True)
