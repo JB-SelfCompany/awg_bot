@@ -1,4 +1,4 @@
-# WireGuard/AmneziaWG Telegram Bot
+# WireGuard / AmneziaWG Telegram Bot
 
 Телеграм-бот на Python для управления [WireGuard](https://www.wireguard.com) / [AmneziaWG](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module). Этот бот позволяет легко управлять клиентами. Подразумевается, что у вас уже установлен Python 3.11.x (на 3.12.x возникают ошибки). Используется библиотека `aiogram` версии 2.25.2.
 
