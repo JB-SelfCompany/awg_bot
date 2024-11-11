@@ -20,6 +20,20 @@ choose_config_type() {
     CONFIG_TYPE="$config_type"
 }
 
+check_installed() {
+    if [[ "$CONFIG_TYPE" -eq 1 ]]; then
+        if ! command -v awg >/dev/null 2>&1; then
+            echo "AmneziaWG не установлен в системе. Обратитесь к ресурсу https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" >&2
+            exit 1
+        fi
+    else
+        if ! command -v wg >/dev/null 2>&1; then
+            echo "WireGuard не установлен в системе. Обратитесь к ресурсу https://www.wireguard.com/install" >&2
+            exit 1
+        fi
+    fi
+}
+
 choose_port() {
     while true; do
         echo -n "Какой порт использовать? " >&2
@@ -69,16 +83,8 @@ choose_ipv6() {
 generate_private_key() {
     local type=$1
     if [[ "$type" -eq 1 ]]; then
-        if ! command -v awg >/dev/null 2>&1; then
-            echo "AmneziaWG не установлен в системе. Обратитесь к ресурсу https://github.com/amnezia-vpn/amneziawg-linux-kernel-module" >&2
-            exit 1
-        fi
         private_key=$(awg genkey)
     else
-        if ! command -v wg >/dev/null 2>&1; then
-            echo "WireGuard не установлен в системе. Обратитесь к ресурсу https://www.wireguard.com/install" >&2
-            exit 1
-        fi
         private_key=$(wg genkey)
     fi
     echo "$private_key"
@@ -95,6 +101,7 @@ get_next_config_number() {
 }
 
 choose_config_type
+check_installed
 choose_port
 ip6_address=$(choose_ipv6)
 private_key=$(generate_private_key "$CONFIG_TYPE")
